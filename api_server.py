@@ -13,36 +13,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Serve React build from frontend/dist
-FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+# Use abspath to resolve the correct path regardless of working directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
 
-app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path="")
+print(f"[Server] BASE_DIR={BASE_DIR}")
+print(f"[Server] FRONTEND_DIST={FRONTEND_DIST}")
+print(f"[Server] dist exists={os.path.isdir(FRONTEND_DIST)}")
+
+app = Flask(__name__)
 CORS(app)
 
 # In-memory store for RAG chains keyed by session_id
 _sessions = {}
 
 
-# ── Serve React frontend ──────────────────────────────────────────────────────
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def serve_react(path):
-    """Serve the React SPA for all non-API routes."""
-    if path and os.path.exists(os.path.join(FRONTEND_DIST, path)):
-        return send_from_directory(FRONTEND_DIST, path)
-    return send_from_directory(FRONTEND_DIST, "index.html")
+# ── Health check ─────────────────────────────────────────────────────────────
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "dist_exists": os.path.isdir(FRONTEND_DIST)})
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
-@app.route("/api/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"})
-
-
 @app.route("/api/pipeline", methods=["POST"])
 def run_pipeline():
     """Run the full AI Video Assistant pipeline (lazy imports heavy libs)."""
-    # Lazy imports — only loaded when first request arrives
     from utils.audio_processor import process_input
     from core.transcriber import transcribe_all
     from core.summarizer import summarize, generate_title
@@ -121,6 +116,22 @@ def chat():
     except Exception as e:
         print(f"[Chat] Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ── Serve React SPA (must be LAST to not shadow API routes) ──────────────────
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    """Serve built React app. Falls back to index.html for client-side routing."""
+    # Check if a real file exists (JS, CSS, images, etc.)
+    requested_file = os.path.join(FRONTEND_DIST, path)
+    if path and os.path.isfile(requested_file):
+        return send_from_directory(FRONTEND_DIST, path)
+    # Otherwise serve index.html (React handles routing)
+    index = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(index):
+        return send_from_directory(FRONTEND_DIST, "index.html")
+    return f"<h1>Frontend not built</h1><p>dist not found at: {FRONTEND_DIST}</p>", 404
 
 
 if __name__ == "__main__":
