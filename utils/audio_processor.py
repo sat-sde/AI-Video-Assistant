@@ -66,6 +66,7 @@ def download_youtube_audio(url: str) -> str:
                 'player_client': ['ios', 'android', 'web']
             }
         },
+        'js_runtimes': ['node'],
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'wav',
@@ -77,6 +78,10 @@ def download_youtube_audio(url: str) -> str:
     # If the user has provided cookies via environment variable (to bypass bot detection)
     cookies_content = os.getenv("YOUTUBE_COOKIES")
     if cookies_content:
+        # Prevent bot blocks: Don't spoof mobile clients when using desktop browser cookies
+        if "extractor_args" in ydl_opts:
+            del ydl_opts["extractor_args"]
+            
         cookies_file_path = os.path.join(DOWNLOAD_DIR, "youtube_cookies.txt")
         with open(cookies_file_path, "w") as f:
             f.write(cookies_content)
