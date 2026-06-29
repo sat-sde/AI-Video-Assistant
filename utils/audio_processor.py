@@ -17,9 +17,9 @@ def _clean_download_dir():
 def download_youtube_audio(url: str) -> str:
     _clean_download_dir()
 
-    # Use a safe ASCII filename to avoid Unicode encoding issues
     safe_name = str(uuid.uuid4())[:8]
     output_path = os.path.join(DOWNLOAD_DIR, f"{safe_name}.%(ext)s")
+    
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": output_path,
@@ -32,12 +32,23 @@ def download_youtube_audio(url: str) -> str:
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": "64", # Lower quality saves size
+                "preferredquality": "64",
             }
         ],
         "quiet": True,
         "no_warnings": True,
     }
+
+    # If the user has provided cookies via environment variable (to bypass bot detection)
+    cookies_content = os.getenv("YOUTUBE_COOKIES")
+    if cookies_content:
+        cookies_file_path = os.path.join(DOWNLOAD_DIR, "youtube_cookies.txt")
+        # Write the cookies content to a file. 
+        # (Render env vars replace literal newlines with actual newlines)
+        with open(cookies_file_path, "w") as f:
+            f.write(cookies_content)
+        ydl_opts["cookiefile"] = cookies_file_path
+        print("[AudioProcessor] Using YOUTUBE_COOKIES to bypass bot detection.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
