@@ -38,9 +38,23 @@ def get_youtube_transcript(url: str) -> str | None:
             cj = http.cookiejar.MozillaCookieJar(cookies_path)
             cj.load(ignore_discard=True, ignore_expires=True)
             session.cookies.update(cj)
+            
+            # Check for proxy configuration
+            youtube_proxy = os.getenv("YOUTUBE_PROXY")
+            if youtube_proxy:
+                print("[AudioProcessor] Using YOUTUBE_PROXY for transcript fetch.")
+                session.proxies = {"http": youtube_proxy, "https": youtube_proxy}
+                
             ytt_api = YouTubeTranscriptApi(http_client=session)
         else:
-            ytt_api = YouTubeTranscriptApi()
+            youtube_proxy = os.getenv("YOUTUBE_PROXY")
+            if youtube_proxy:
+                print("[AudioProcessor] Using YOUTUBE_PROXY for transcript fetch (no cookies).")
+                session = requests.Session()
+                session.proxies = {"http": youtube_proxy, "https": youtube_proxy}
+                ytt_api = YouTubeTranscriptApi(http_client=session)
+            else:
+                ytt_api = YouTubeTranscriptApi()
             
         transcript_list = ytt_api.list(video_id)
         
@@ -90,6 +104,11 @@ def download_youtube_audio(url: str) -> str:
         "quiet": True,
         "no_warnings": True,
     }
+    
+    youtube_proxy = os.getenv("YOUTUBE_PROXY")
+    if youtube_proxy:
+        print("[AudioProcessor] Injecting YOUTUBE_PROXY into yt-dlp to bypass bot detection.")
+        ydl_opts["proxy"] = youtube_proxy
     
     # If the user has provided cookies via environment variable (to bypass bot detection)
     cookies_content = os.getenv("YOUTUBE_COOKIES")
