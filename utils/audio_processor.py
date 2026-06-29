@@ -1,10 +1,11 @@
 import yt_dlp
-import os
-import uuid
-import math
 from pydub import AudioSegment
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+import os
+import re
+import uuid
 
-DOWNLOAD_DIR = 'downloades'
+DOWNLOAD_DIR = "downloades"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def _clean_download_dir():
@@ -14,86 +15,100 @@ def _clean_download_dir():
         if os.path.isfile(filepath):
             os.remove(filepath)
 
+def extract_video_id(url: str) -> str:
+    pattern = r"(?:v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})"
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
+
+def get_youtube_transcript(url: str) -> str | None:
+    video_id = extract_video_id(url)
+    if not video_id:
+        return None
+    try:
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "hi"])
+        return " ".join([t["text"] for t in transcript])
+    except (NoTranscriptFound, TranscriptsDisabled):
+        return None
+    except Exception:
+        return None
+
 def download_youtube_audio(url: str) -> str:
     _clean_download_dir()
-
     safe_name = str(uuid.uuid4())[:8]
     output_path = os.path.join(DOWNLOAD_DIR, f"{safe_name}.%(ext)s")
     
     ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": output_path,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "android", "web"]
-            }
-        },
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "64",
-            }
-        ],
+        'format': 'bestaudio/best',
+        'outtmpl': output_path,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'wav',
+        }],
         "quiet": True,
         "no_warnings": True,
     }
-
+    
     # If the user has provided cookies via environment variable (to bypass bot detection)
     cookies_content = os.getenv("YOUTUBE_COOKIES")
     if cookies_content:
-        # If using desktop cookies, spoofing mobile clients causes format errors, so remove it
-        if "extractor_args" in ydl_opts:
-            del ydl_opts["extractor_args"]
-            
         cookies_file_path = os.path.join(DOWNLOAD_DIR, "youtube_cookies.txt")
         with open(cookies_file_path, "w") as f:
             f.write(cookies_content)
         ydl_opts["cookiefile"] = cookies_file_path
         print("[AudioProcessor] Using YOUTUBE_COOKIES to bypass bot detection.")
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            print(f"Downloading audio from {url}...")
-            ydl.extract_info(url, download=True)
-            # Find the actual downloaded file
+        
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        filename = ydl.prepare_filename(info).replace('.webm', '.wav').replace('.m4a', '.wav')
+        
+        # If prepare_filename fails due to uuid, fallback to finding the file
+        if not os.path.exists(filename):
             for f in os.listdir(DOWNLOAD_DIR):
-                if f.endswith('.mp3'):
+                if f.endswith('.wav'):
                     return os.path.join(DOWNLOAD_DIR, f)
-            raise FileNotFoundError("Audio file not found after download.")
-    except Exception as e:
-        print(f"Error downloading YouTube video: {e}")
-        raise e
+        return filename
 
-def chunk_audio(file_path: str, chunk_length_ms: int = 10 * 60 * 1000) -> list:
-    """Chunks audio into smaller pieces to bypass API size limits (e.g. OpenAI 25MB limit)."""
-    print(f"Chunking audio: {file_path}")
-    audio = AudioSegment.from_file(file_path)
+def convert_to_wav(input_path: str) -> str:
+    filename = os.path.splitext(os.path.basename(input_path))[0] + '.wav'
+    output_path = os.path.join(DOWNLOAD_DIR, filename)
+    audio = AudioSegment.from_file(input_path)
+    audio = audio.set_frame_rate(16000).set_channels(1)
+    audio.export(output_path, format="wav")
+    return output_path
+
+def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
+    audio = AudioSegment.from_file(wav_path)
+    # Ensure it's 16000Hz mono as Whisper prefers this format
+    audio = audio.set_frame_rate(16000).set_channels(1)
+    
+    chunk_ms = chunk_minutes * 60 * 1000
     chunks = []
-    
-    total_length = len(audio)
-    num_chunks = math.ceil(total_length / chunk_length_ms)
-    
-    for i in range(num_chunks):
-        start_time = i * chunk_length_ms
-        end_time = min((i + 1) * chunk_length_ms, total_length)
-        chunk = audio[start_time:end_time]
-        
-        chunk_name = f"{file_path}_chunk_{i}.mp3"
-        chunk.export(chunk_name, format="mp3")
-        chunks.append(chunk_name)
-        
-    print(f"Audio chunked into {len(chunks)} pieces.")
+    for i, start in enumerate(range(0, len(audio), chunk_ms)):
+        chunk = audio[start: start + chunk_ms]
+        chunk_path = f"{wav_path}_chunk_{i}.wav"
+        chunk.export(chunk_path, format="wav")
+        chunks.append(chunk_path)
     return chunks
 
 def process_input(source: str):
     """
-    Downloads audio from YouTube and returns a list of chunked file paths.
+    Returns (transcript_text, None) if YouTube captions found.
+    Returns (None, chunks) if audio needs Whisper transcription.
     """
     if "youtube.com" in source or "youtu.be" in source:
-        audio_path = download_youtube_audio(source)
+        print("Trying YouTube captions (fast path)...")
+        transcript = get_youtube_transcript(source)
+        if transcript:
+            print("Captions found — skipping audio download.")
+            return transcript, None
+
+        print("No captions found — downloading audio for Whisper...")
+        wav_path = download_youtube_audio(source)
     else:
-        audio_path = source
-        
-    # Return chunked paths
-    return chunk_audio(audio_path)
+        print("Detected local file. Converting to WAV...")
+        wav_path = convert_to_wav(source)
+
+    print("Chunking audio...")
+    chunks = chunk_audio(wav_path)
+    print(f"Audio ready — {len(chunks)} chunk(s).")
+    return None, chunks

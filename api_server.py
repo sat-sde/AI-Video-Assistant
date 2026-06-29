@@ -51,21 +51,13 @@ def run_pipeline():
     try:
         print(f"[Pipeline] Starting for source={source}, language={language}")
 
-        print("[Pipeline] Step 1/6: Attempting to fetch native YouTube captions...")
-        from core.caption_fetcher import fetch_youtube_captions
-        
-        transcript = None
-        if "youtube.com" in source or "youtu.be" in source:
-            transcript = fetch_youtube_captions(source, language)
-            
-        if transcript:
-            print("[Pipeline] Native captions found! Skipping audio download and Whisper API.")
-        else:
-            print("[Pipeline] No native captions. Falling back to audio download and Whisper...")
-            print("[Pipeline] Step 2/6 (Fallback): Processing audio...")
-            chunks = process_input(source)
+        print("[Pipeline] Step 1 & 2: Processing input (captions or audio)...")
+        transcript, chunks = process_input(source)
 
-            print("[Pipeline] Step 3/6 (Fallback): Transcribing with Whisper API...")
+        if transcript:
+            print("[Pipeline] Fast-path! Skipping Whisper API since native captions were found.")
+        else:
+            print("[Pipeline] Step 3/6: Transcribing with Whisper API...")
             transcript = get_transcript(chunks, language)
 
         print("[Pipeline] Step 4/6: Generating title...")
