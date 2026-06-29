@@ -25,8 +25,16 @@ def get_youtube_transcript(url: str) -> str | None:
     if not video_id:
         return None
     try:
+        # Determine cookies path based on project root
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cookies_path = os.path.join(project_root, "cookies.txt")
+        
         ytt_api = YouTubeTranscriptApi()
-        transcript_list = ytt_api.list(video_id)
+        if os.path.exists(cookies_path):
+            print("[AudioProcessor] Passing cookies.txt to youtube-transcript-api")
+            transcript_list = ytt_api.list(video_id, cookies=cookies_path)
+        else:
+            transcript_list = ytt_api.list(video_id)
         
         # Try finding en or hi
         try:
@@ -103,10 +111,10 @@ def download_youtube_audio(url: str) -> str:
         ydl_opts["cookiefile"] = cookies_file_path
         print("[AudioProcessor] Using YOUTUBE_COOKIES from environment to bypass bot detection.")
         
-    elif os.path.exists("cookies.txt"):
+    elif os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cookies.txt")):
         if "extractor_args" in ydl_opts:
             del ydl_opts["extractor_args"]
-        ydl_opts["cookiefile"] = "cookies.txt"
+        ydl_opts["cookiefile"] = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cookies.txt")
         print("[AudioProcessor] Using physical cookies.txt to bypass bot detection.")
         
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
