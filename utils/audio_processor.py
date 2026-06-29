@@ -42,9 +42,11 @@ def download_youtube_audio(url: str) -> str:
     # If the user has provided cookies via environment variable (to bypass bot detection)
     cookies_content = os.getenv("YOUTUBE_COOKIES")
     if cookies_content:
+        # If using desktop cookies, spoofing mobile clients causes format errors, so remove it
+        if "extractor_args" in ydl_opts:
+            del ydl_opts["extractor_args"]
+            
         cookies_file_path = os.path.join(DOWNLOAD_DIR, "youtube_cookies.txt")
-        # Write the cookies content to a file. 
-        # (Render env vars replace literal newlines with actual newlines)
         with open(cookies_file_path, "w") as f:
             f.write(cookies_content)
         ydl_opts["cookiefile"] = cookies_file_path
