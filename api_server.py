@@ -1,8 +1,5 @@
 """
 Flask API server — connects the React frontend to the Python backend pipeline.
-
-Uses lazy imports for heavy ML libraries (torch, whisper, sentence-transformers)
-so Flask binds to the port immediately on startup (required by Render).
 """
 
 import uuid
@@ -37,9 +34,9 @@ def health():
 # ── API Routes ────────────────────────────────────────────────────────────────
 @app.route("/api/pipeline", methods=["POST"])
 def run_pipeline():
-    """Run the full AI Video Assistant pipeline (lazy imports heavy libs)."""
+    """Run the full AI Video Assistant pipeline using Gemini API."""
     from utils.audio_processor import process_input
-    from core.transcriber import transcribe_all
+    from core.transcriber import get_transcript
     from core.summarizer import summarize, generate_title
     from core.extractor import extract_action_items, extract_key_decisions, extract_questions
     from core.rag_engine import build_rag_chain
@@ -57,8 +54,8 @@ def run_pipeline():
         print("[Pipeline] Step 1/6: Processing audio...")
         chunks = process_input(source)
 
-        print("[Pipeline] Step 2/6: Transcribing...")
-        transcript = transcribe_all(chunks, language)
+        print("[Pipeline] Step 2/6: Transcribing with Gemini API...")
+        transcript = get_transcript(chunks, language)
 
         print("[Pipeline] Step 3/6: Generating title...")
         title = generate_title(transcript)

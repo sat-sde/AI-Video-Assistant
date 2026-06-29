@@ -1,4 +1,4 @@
-from langchain_mistralai import ChatMistralAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -7,25 +7,27 @@ from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 import os 
 
 def get_llm():
-    return ChatMistralAI(model = "mistral-small-latest", mistral_api_key = os.getenv("MISTRAL_API_KEY"),temperature=0.3)
-
+    return ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash",
+        google_api_key=os.getenv("GEMINI_API_KEY"),
+        temperature=0.3
+    )
 
 def split_transcript(transcript: str) -> list:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 3000,
-        chunk_overlap = 200
+        chunk_size = 8000, # Gemini has 1M context, we can use larger chunks!
+        chunk_overlap = 500
     )
-
     return splitter.split_text(transcript)
 
-def summarize(transcript : str) -> str:
+def summarize(transcript: str) -> str:
     llm = get_llm()
 
     map_prompt = ChatPromptTemplate.from_messages(
         [
-        ("system", "Summarize this portion of a meeting transcript concisely."),
+        ("system", "Summarize this portion of a meeting/video transcript concisely."),
         ("human", "{text}"),
-    ]
+        ]
     )
 
     map_chain = map_prompt | llm | StrOutputParser()
@@ -44,7 +46,7 @@ def summarize(transcript : str) -> str:
             "into one final professional meeting summary in bullet points.",
         ),
         ("human", "{text}"),
-    ]
+        ]
     )
 
     combined_chain = (
@@ -53,27 +55,21 @@ def summarize(transcript : str) -> str:
 
     return combined_chain.invoke(combined)
 
-def generate_title(transcipt : str) -> str:
+def generate_title(transcript: str) -> str:
     llm = get_llm()
 
-    
-
-    title_chain = (
-        RunnablePassthrough() | RunnableLambda(lambda x:{"text":x}) | 
-        ChatPromptTemplate.from_messages([
-             (
-                "system",
-                "Based on the meeting transcript, generate a short professional meeting title "
-                "(max 8 words). Only return the title, nothing else.",
-            ),
-            ("human", "{text}"),
-        ])
-        | llm
-        |StrOutputParser()
+    title_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "Generate a short, catchy, and professional title (max 6 words) for this meeting/video transcript."),
+            ("human", "{text}")
+        ]
     )
 
-    return title_chain.invoke(transcipt[:2000])
-
-
-
-
+    title_chain = title_prompt | llm | StrOutputParser()
+    
+    # We just need the first few lines to get a good title, saving tokens.
+    short_text = transcript[:2000]
+    title = title_chain.invoke({"text": short_text})
+    
+    # Clean up any quotes
+    return title.replace('"', '').strip()
