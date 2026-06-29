@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 
 // In development: points to local Flask on port 5001
-// In production: reads VITE_API_BASE from frontend/.env.production
-const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? "" : "http://localhost:5001");
+// In production: empty string (same-origin relative URL)
+const API_BASE = import.meta.env.PROD ? "" : "http://localhost:5001";
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
