@@ -1,5 +1,8 @@
 import yt_dlp
 import os
+import uuid
+import math
+from pydub import AudioSegment
 
 DOWNLOAD_DIR = 'downloades'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -14,7 +17,9 @@ def _clean_download_dir():
 def download_youtube_audio(url: str) -> str:
     _clean_download_dir()
 
-    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    # Use a safe ASCII filename to avoid Unicode encoding issues
+    safe_name = str(uuid.uuid4())[:8]
+    output_path = os.path.join(DOWNLOAD_DIR, f"{safe_name}.%(ext)s")
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": output_path,
@@ -27,7 +32,7 @@ def download_youtube_audio(url: str) -> str:
             {
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": "192",
+                "preferredquality": "64", # Lower quality saves size
             }
         ],
         "quiet": True,
@@ -37,10 +42,8 @@ def download_youtube_audio(url: str) -> str:
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             print(f"Downloading audio from {url}...")
-            info_dict = ydl.extract_info(url, download=True)
-            # Find the actual downloaded file (yt-dlp changes the extension after conversion)
-            title = info_dict.get('title', 'video')
-            # Look for the downloaded mp3 file in the directory
+            ydl.extract_info(url, download=True)
+            # Find the actual downloaded file
             for f in os.listdir(DOWNLOAD_DIR):
                 if f.endswith('.mp3'):
                     return os.path.join(DOWNLOAD_DIR, f)
@@ -49,14 +52,35 @@ def download_youtube_audio(url: str) -> str:
         print(f"Error downloading YouTube video: {e}")
         raise e
 
+def chunk_audio(file_path: str, chunk_length_ms: int = 10 * 60 * 1000) -> list:
+    """Chunks audio into smaller pieces to bypass API size limits (e.g. OpenAI 25MB limit)."""
+    print(f"Chunking audio: {file_path}")
+    audio = AudioSegment.from_file(file_path)
+    chunks = []
+    
+    total_length = len(audio)
+    num_chunks = math.ceil(total_length / chunk_length_ms)
+    
+    for i in range(num_chunks):
+        start_time = i * chunk_length_ms
+        end_time = min((i + 1) * chunk_length_ms, total_length)
+        chunk = audio[start_time:end_time]
+        
+        chunk_name = f"{file_path}_chunk_{i}.mp3"
+        chunk.export(chunk_name, format="mp3")
+        chunks.append(chunk_name)
+        
+    print(f"Audio chunked into {len(chunks)} pieces.")
+    return chunks
+
 def process_input(source: str):
     """
-    Downloads audio from YouTube and returns the file path.
-    Since we use Gemini API, we no longer need to chunk the audio!
+    Downloads audio from YouTube and returns a list of chunked file paths.
     """
     if "youtube.com" in source or "youtu.be" in source:
         audio_path = download_youtube_audio(source)
     else:
         audio_path = source
         
-    return [audio_path] # Return as a list with one item for compatibility with transcriber
+    # Return chunked paths
+    return chunk_audio(audio_path)

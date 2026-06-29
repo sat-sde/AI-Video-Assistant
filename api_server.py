@@ -114,6 +114,27 @@ def chat():
         print(f"[Chat] Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/tts", methods=["POST"])
+def tts():
+    """Convert text to speech using Sarvam AI."""
+    from core.tts_engine import generate_tts
+    import base64
+
+    data = request.get_json()
+    text = data.get("text", "").strip()
+    language = data.get("language", "hi-IN").strip()
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+
+    try:
+        # returns response dict containing base64 audio
+        response = generate_tts(text=text, target_language=language)
+        return jsonify(response)
+    except Exception as e:
+        print(f"[TTS] Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 # ── Serve React SPA (must be LAST to not shadow API routes) ──────────────────
 @app.route("/", defaults={"path": ""})

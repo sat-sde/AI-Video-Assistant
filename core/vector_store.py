@@ -1,18 +1,18 @@
 import os 
 from langchain_chroma import Chroma 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_mistralai import MistralAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 CHROMA_DIR = "vector_db"
 COLLECTION_NAME = "meeting_transcript"
-# Use Gemini's embedding model
-EMBEDDING_MODEL = "models/text-embedding-004"
+# Use Mistral's embedding model
+EMBEDDING_MODEL = "mistral-embed"
 
 def get_embeddings():
-    return GoogleGenerativeAIEmbeddings(
+    return MistralAIEmbeddings(
         model=EMBEDDING_MODEL,
-        google_api_key=os.getenv("GEMINI_API_KEY")
+        api_key=os.getenv("MISTRAL_API_KEY")
     )
 
 def build_vector_store(transcript: str) -> Chroma:
