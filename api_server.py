@@ -1,13 +1,16 @@
 """
 Flask API server that bridges the React frontend to the Python backend pipeline.
 
+In production (Render), Flask also serves the built React static files.
+
 Endpoints:
   POST /api/pipeline  — runs the full pipeline (audio → transcript → insights → RAG)
   POST /api/chat      — asks a question against the RAG chain for a given session
 """
 
 import uuid
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -19,13 +22,27 @@ from core.summarizer import summarize, generate_title
 from core.extractor import extract_action_items, extract_key_decisions, extract_questions
 from core.rag_engine import build_rag_chain, ask_question
 
-app = Flask(__name__)
-CORS(app)  # Allow frontend on localhost:5173 to call this API
+# Serve React build from frontend/dist
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+
+app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path="")
+CORS(app)
 
 # In-memory store for RAG chains keyed by session_id
 _sessions = {}
 
 
+# ── Serve React frontend ──────────────────────────────────────────────────────
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_react(path):
+    """Serve the React SPA for all non-API routes."""
+    if path and os.path.exists(os.path.join(FRONTEND_DIST, path)):
+        return send_from_directory(FRONTEND_DIST, path)
+    return send_from_directory(FRONTEND_DIST, "index.html")
+
+
+# ── API Routes ────────────────────────────────────────────────────────────────
 @app.route("/api/pipeline", methods=["POST"])
 def run_pipeline():
     """Run the full AI Video Assistant pipeline."""
@@ -39,33 +56,26 @@ def run_pipeline():
     try:
         print(f"[Pipeline] Starting for source={source}, language={language}")
 
-        # Step 1: Audio processing
         print("[Pipeline] Step 1/6: Processing audio...")
         chunks = process_input(source)
 
-        # Step 2: Transcription
         print("[Pipeline] Step 2/6: Transcribing...")
         transcript = transcribe_all(chunks, language)
 
-        # Step 3: Title generation
         print("[Pipeline] Step 3/6: Generating title...")
         title = generate_title(transcript)
 
-        # Step 4: Summarization
         print("[Pipeline] Step 4/6: Summarizing...")
         summary = summarize(transcript)
 
-        # Step 5: Insight extraction
         print("[Pipeline] Step 5/6: Extracting insights...")
         action_items = extract_action_items(transcript)
         decisions = extract_key_decisions(transcript)
         questions = extract_questions(transcript)
 
-        # Step 6: RAG engine
         print("[Pipeline] Step 6/6: Building RAG engine...")
         rag_chain = build_rag_chain(transcript)
 
-        # Store the RAG chain in memory with a session ID
         session_id = str(uuid.uuid4())
         _sessions[session_id] = rag_chain
 
@@ -108,4 +118,5 @@ def chat():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=False)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=False)

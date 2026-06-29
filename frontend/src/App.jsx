@@ -12,7 +12,9 @@ import {
   User
 } from 'lucide-react';
 
-const API_BASE = "http://localhost:5001";
+// In production (Render), Flask serves the React build at the same origin.
+// In development, Vite proxies /api/* to the local Flask server.
+const API_BASE = import.meta.env.PROD ? "" : "http://localhost:5001";
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
