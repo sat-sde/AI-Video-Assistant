@@ -1,11 +1,8 @@
 """
-Flask API server that bridges the React frontend to the Python backend pipeline.
+Flask API server — connects the React frontend to the Python backend pipeline.
 
-In production (Render), Flask also serves the built React static files.
-
-Endpoints:
-  POST /api/pipeline  — runs the full pipeline (audio → transcript → insights → RAG)
-  POST /api/chat      — asks a question against the RAG chain for a given session
+Uses lazy imports for heavy ML libraries (torch, whisper, sentence-transformers)
+so Flask binds to the port immediately on startup (required by Render).
 """
 
 import uuid
@@ -15,12 +12,6 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 
 load_dotenv()
-
-from utils.audio_processor import process_input
-from core.transcriber import transcribe_all
-from core.summarizer import summarize, generate_title
-from core.extractor import extract_action_items, extract_key_decisions, extract_questions
-from core.rag_engine import build_rag_chain, ask_question
 
 # Serve React build from frontend/dist
 FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
@@ -43,9 +34,21 @@ def serve_react(path):
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/pipeline", methods=["POST"])
 def run_pipeline():
-    """Run the full AI Video Assistant pipeline."""
+    """Run the full AI Video Assistant pipeline (lazy imports heavy libs)."""
+    # Lazy imports — only loaded when first request arrives
+    from utils.audio_processor import process_input
+    from core.transcriber import transcribe_all
+    from core.summarizer import summarize, generate_title
+    from core.extractor import extract_action_items, extract_key_decisions, extract_questions
+    from core.rag_engine import build_rag_chain
+
     data = request.get_json()
     source = data.get("source", "").strip()
     language = data.get("language", "english").strip()
@@ -93,12 +96,15 @@ def run_pipeline():
 
     except Exception as e:
         print(f"[Pipeline] Error: {e}")
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
     """Ask a question against a previously built RAG chain."""
+    from core.rag_engine import ask_question
+
     data = request.get_json()
     session_id = data.get("session_id", "")
     question = data.get("question", "").strip()
@@ -119,4 +125,5 @@ def chat():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
+    print(f"[Server] Starting on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
