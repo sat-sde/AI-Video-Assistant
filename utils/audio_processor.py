@@ -66,7 +66,7 @@ def download_youtube_audio(url: str) -> str:
                 'player_client': ['ios', 'android', 'web']
             }
         },
-        'js_runtimes': ['node'],
+        'js_runtimes': {'node': {}},
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'wav',
