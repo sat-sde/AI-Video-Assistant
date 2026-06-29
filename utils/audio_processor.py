@@ -29,12 +29,20 @@ def get_youtube_transcript(url: str) -> str | None:
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         cookies_path = os.path.join(project_root, "cookies.txt")
         
-        ytt_api = YouTubeTranscriptApi()
+        import requests
+        import http.cookiejar
+        
         if os.path.exists(cookies_path):
-            print("[AudioProcessor] Passing cookies.txt to youtube-transcript-api")
-            transcript_list = ytt_api.list(video_id, cookies=cookies_path)
+            print("[AudioProcessor] Passing cookies.txt to youtube-transcript-api via Session")
+            session = requests.Session()
+            cj = http.cookiejar.MozillaCookieJar(cookies_path)
+            cj.load(ignore_discard=True, ignore_expires=True)
+            session.cookies.update(cj)
+            ytt_api = YouTubeTranscriptApi(http_client=session)
         else:
-            transcript_list = ytt_api.list(video_id)
+            ytt_api = YouTubeTranscriptApi()
+            
+        transcript_list = ytt_api.list(video_id)
         
         # Try finding en or hi
         try:
