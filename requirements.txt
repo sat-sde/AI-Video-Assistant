@@ -7,6 +7,7 @@ flask-cors>=4.0.0                 # Cross-Origin Resource Sharing for Flask
 
 # ── Audio / Video acquisition ─────────────────────────────────────────────────
 yt-dlp>=2026.6.9                  # Download audio from YouTube URLs (latest version bypasses bot detection)
+youtube-transcript-api>=0.6.2     # Fast extraction of native YouTube captions
 ffmpeg-python>=0.2.0              # FFmpeg bindings (FFmpeg binary must be installed separately)
 pydub>=0.25.1                     # Audio processing and chunking
 
