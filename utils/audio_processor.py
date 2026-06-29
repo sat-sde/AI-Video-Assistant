@@ -77,16 +77,37 @@ def download_youtube_audio(url: str) -> str:
     
     # If the user has provided cookies via environment variable (to bypass bot detection)
     cookies_content = os.getenv("YOUTUBE_COOKIES")
+    cookies_file_path = os.path.join(DOWNLOAD_DIR, "youtube_cookies.txt")
+    
     if cookies_content:
         # Prevent bot blocks: Don't spoof mobile clients when using desktop browser cookies
         if "extractor_args" in ydl_opts:
             del ydl_opts["extractor_args"]
             
-        cookies_file_path = os.path.join(DOWNLOAD_DIR, "youtube_cookies.txt")
+        # Clean up quotes if pasted accidentally
+        cookies_content = cookies_content.strip()
+        if cookies_content.startswith('"') and cookies_content.endswith('"'):
+            cookies_content = cookies_content[1:-1]
+        if cookies_content.startswith("'") and cookies_content.endswith("'"):
+            cookies_content = cookies_content[1:-1]
+            
+        # Ensure it starts with the Netscape header (in case it got mangled)
+        if not cookies_content.startswith("# Netscape HTTP Cookie File"):
+            cookies_content = "# Netscape HTTP Cookie File\n" + cookies_content
+            
+        # Fix flattened newlines if they got replaced by literal \n
+        cookies_content = cookies_content.replace("\\n", "\n")
+            
         with open(cookies_file_path, "w") as f:
             f.write(cookies_content)
         ydl_opts["cookiefile"] = cookies_file_path
-        print("[AudioProcessor] Using YOUTUBE_COOKIES to bypass bot detection.")
+        print("[AudioProcessor] Using YOUTUBE_COOKIES from environment to bypass bot detection.")
+        
+    elif os.path.exists("cookies.txt"):
+        if "extractor_args" in ydl_opts:
+            del ydl_opts["extractor_args"]
+        ydl_opts["cookiefile"] = "cookies.txt"
+        print("[AudioProcessor] Using physical cookies.txt to bypass bot detection.")
         
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
