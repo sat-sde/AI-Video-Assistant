@@ -25,11 +25,32 @@ def get_youtube_transcript(url: str) -> str | None:
     if not video_id:
         return None
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "hi"])
-        return " ".join([t["text"] for t in transcript])
+        ytt_api = YouTubeTranscriptApi()
+        transcript_list = ytt_api.list(video_id)
+        
+        # Try finding en or hi
+        try:
+            transcript = transcript_list.find_transcript(["en", "hi"])
+        except Exception:
+            # Fallback to translate
+            available = list(transcript_list._manually_created_transcripts.keys()) + list(transcript_list._generated_transcripts.keys())
+            if not available:
+                return None
+            transcript = transcript_list.find_transcript(available)
+            if 'en' in transcript.translation_languages:
+                transcript = transcript.translate('en')
+                
+        fetched = transcript.fetch()
+        text = " ".join([getattr(t, "text", "") for t in fetched])
+        # Clean up text
+        text = text.replace('\n', ' ')
+        return re.sub(r'\s+', ' ', text).strip()
+        
     except (NoTranscriptFound, TranscriptsDisabled):
+        print(f"[AudioProcessor] Transcripts disabled or not found for {video_id}")
         return None
-    except Exception:
+    except Exception as e:
+        print(f"[AudioProcessor] Error fetching transcript: {e}")
         return None
 
 def download_youtube_audio(url: str) -> str:
